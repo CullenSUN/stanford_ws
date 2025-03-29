@@ -41,3 +41,11 @@ source ./install/setup.bash
 ros2 topic pub --once /command_topic std_msgs/msg/String data:\ \'dance2\'\ 
 ```
 
+
+Other way to test the code if you do not use command_launcher, we can disable champ servo
+
+```
+source ./install/setup.bash 
+ros2 service call /toggle_servo std_srvs/srv/SetBool "{data: true}"
+ros2 launch  mini_pupper_dance_js  dance1.launch.py
+```
