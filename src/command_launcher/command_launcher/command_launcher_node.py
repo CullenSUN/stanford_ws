@@ -9,31 +9,42 @@ import os, time
 import signal
 
 
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import SetBool
+
 class ToggleServoClient:
     """
     A class to interact with the toggle_servo service to turn the servo on/off.
     """
-    def __init__(self, node):
+    def __init__(self, node, timeout_sec=5.0):
         self.node = node
         self.client = node.create_client(SetBool, 'toggle_servo')
 
-        # Wait for the service to be available
+        # Wait for the service to be available within the specified timeout
+        start_time = node.get_clock().now().seconds_nanoseconds()[0]
         while not self.client.wait_for_service(timeout_sec=1.0):
             node.get_logger().info('Service not available, waiting...')
+            if node.get_clock().now().seconds_nanoseconds()[0] - start_time > timeout_sec:
+                node.get_logger().error(f'Service still not available after {timeout_sec} seconds!')
+                return
 
-    def send_request(self, deactivate):
+    def send_request(self, deactivate, timeout_sec=10.0):
         """
         Sends a request to the toggle servo service and waits for a successful response.
         """
         req = SetBool.Request()
         req.data = deactivate
         self.node.get_logger().info(f'Sending request to deactivate: {deactivate}')
-        
-        # Call the service asynchronously
-        future = self.client.call_async(req)
 
-        # Wait for the result
-        rclpy.spin_until_future_complete(self.node, future)
+        future = self.client.call_async(req)
+        start_time = self.node.get_clock().now().seconds_nanoseconds()[0]
+
+        while not future.done():
+            if self.node.get_clock().now().seconds_nanoseconds()[0] - start_time > timeout_sec:
+                self.node.get_logger().error("Service call timed out!")
+                return False  # Timeout occurred
+            rclpy.spin_once(self.node, timeout_sec=0.1)  # Process callbacks while waiting
 
         try:
             response = future.result()
@@ -49,13 +60,16 @@ class ToggleServoClient:
 
 
 
+
 class CommandLauncherNode(Node):
     """
     A node that listens for commands to control the robot's servo and execute various tasks.
     """
     def __init__(self):
         super().__init__('command_launcher_node')
-        self.current_servo = None  # Initially, no servo is set
+        #self.current_servo = None  # Initially, no servo is set
+        self.current_servo = "champ"
+        
         self.create_subscription(String, '/command_topic', self.command_callback, 10)
         
         # Subscription to image topic (not used, but can be expanded later)
@@ -93,10 +107,8 @@ class CommandLauncherNode(Node):
             success = False
             if self.current_servo == "champ":
                 # Deactivate champ servo before switching to the next one
-                while (not success):
-                    success = self.servo_toggle.send_request(True)
-                    self.get_logger().error("try again...")
-                    time.sleep(1)
+                
+                success = self.servo_toggle.send_request(True)
                 
     
             if success:
@@ -108,6 +120,7 @@ class CommandLauncherNode(Node):
     
                 # Reactivate champ servo after launching the dance
                 self.servo_toggle.send_request(False)  # Turn champ controller back on
+                self.current_servo == "champ"
             else:
                 self.get_logger().error("Failed to deactivate champ servo. Dance1 launch aborted.")
     
@@ -120,6 +133,7 @@ class CommandLauncherNode(Node):
                 self.current_servo = "stanford"
                 self.launch_file("mini_pupper_dance_js", "dance2.launch.py")
                 self.servo_toggle.send_request(False)  # Turn champ controller back on
+                self.current_servo == "champ"
             else:
                 self.get_logger().error("Failed to deactivate champ servo. Dance2 launch aborted.")
     
