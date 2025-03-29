@@ -5,7 +5,7 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # Get the path to the share directory of your package
-    package_share_directory = get_package_share_directory('your_package_name')
+    package_share_directory = get_package_share_directory('mini_pupper_dance_js')
 
     # Specify the file path relative to the package's share directory
     dance_file_path = os.path.join(package_share_directory, 'routines', 'dance1.py')
