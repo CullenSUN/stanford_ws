@@ -5,7 +5,7 @@ This code is used for SAC minipupper competition
 ```
 cd ~
 git clone https://github.com/lbaitemple/stanford_ws
-cd ~/stanford_ws
+cd ~/stanford_ws/server
 python JupyterServer.py
 ```
 
