@@ -2,6 +2,7 @@ from launch import LaunchDescription
 import os
 from launch.actions import DeclareLaunchArgument
 from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
@@ -19,14 +20,14 @@ def generate_launch_description():
         description='Path to the dance file to execute'
     )
 
-    # Define the command launcher node
-    dnace_controller_node = Node(
+    # Define the dance controller node
+    dance_controller_node = Node(
         package='mini_pupper_dance_js',
         executable='mini_pupper_dance_js',
         name='mini_pupper_dance_js',
         output='screen',
         parameters=[{
-            'dance_file': launch.substitutions.LaunchConfiguration('dance_file'),
+            'dance_file': LaunchConfiguration('dance_file'),
             'music_folder': music_file_path,
         }]
     )
@@ -34,5 +35,5 @@ def generate_launch_description():
     # Return the LaunchDescription
     return LaunchDescription([
         dance_file_arg,
-        dnace_controller_node
+        dance_controller_node
     ])
