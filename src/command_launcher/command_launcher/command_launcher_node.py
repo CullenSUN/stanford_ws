@@ -9,60 +9,44 @@ import os, time
 import signal
 
 
-class ToggleServoClient(Node):
+class ToggleServoClient:
     """
     A class to interact with the toggle_servo service to turn the servo on/off.
     """
-    def __init__(self):
-        super().__init__('toggle_servo_client')
-        self.client = self.create_client(SetBool, 'toggle_servo')
-        
+    def __init__(self, node):
+        self.node = node
+        self.client = node.create_client(SetBool, 'toggle_servo')
+
         # Wait for the service to be available
         while not self.client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Service not available, waiting...')
+            node.get_logger().info('Service not available, waiting...')
 
-    
     def send_request(self, deactivate):
         """
         Sends a request to the toggle servo service and waits for a successful response.
         """
         req = SetBool.Request()
         req.data = deactivate
-        self.get_logger().info(f'Sending request to deactivate: {deactivate}')
+        self.node.get_logger().info(f'Sending request to deactivate: {deactivate}')
         
-        # Wait for the service to be available (increase timeout to 5 seconds)
-        timeout = 5.0  # Increase timeout for service wait
-        start_time = self.get_clock().now().seconds_nanoseconds()[0]
-    
-        # Wait for service availability
-        while not self.client.wait_for_service(timeout_sec=timeout):
-            self.get_logger().info('Service not available, waiting...')
-            if self.get_clock().now().seconds_nanoseconds()[0] - start_time > timeout:
-                self.get_logger().error(f"Service still not available after {timeout} seconds!")
-                return False  # Service is still not available after timeout
-    
-        # Call the service and wait for the result
+        # Call the service asynchronously
         future = self.client.call_async(req)
-        start_time = self.get_clock().now().seconds_nanoseconds()[0]
-    
-        # Wait until the service responds successfully
-        while not future.done():
-            if self.get_clock().now().seconds_nanoseconds()[0] - start_time > timeout:
-                self.get_logger().error("Service call timed out!")
-                return False  # Timeout after waiting for too long
-            rclpy.spin_once(self, timeout_sec=0.1)  # Keep spinning until the future is done
-    
+
+        # Wait for the result
+        rclpy.spin_until_future_complete(self.node, future)
+
         try:
-            response = future.result()  # Retrieve the result
+            response = future.result()
             if response.success:
-                self.get_logger().info(f'Success: {response.message}')
-                return True  # Service succeeded
+                self.node.get_logger().info(f'Success: {response.message}')
+                return True
             else:
-                self.get_logger().warn(f'Failed: {response.message}')
-                return False  # Service failed
+                self.node.get_logger().warn(f'Failed: {response.message}')
+                return False
         except Exception as e:
-            self.get_logger().error(f'Service call failed: {str(e)}')
-            return False  # Exception occurred during service call
+            self.node.get_logger().error(f'Service call failed: {str(e)}')
+            return False
+
 
 
 class CommandLauncherNode(Node):
@@ -72,16 +56,16 @@ class CommandLauncherNode(Node):
     def __init__(self):
         super().__init__('command_launcher_node')
         self.current_servo = None  # Initially, no servo is set
-        self.subscription = self.create_subscription(String, '/command_topic', self.command_callback, 10)
+        self.create_subscription(String, '/command_topic', self.command_callback, 10)
         
         # Subscription to image topic (not used, but can be expanded later)
-        self.subscription = self.create_subscription(Image, '/image_raw', self.image_callback, 10)
+        self.create_subscription(Image, '/image_raw', self.image_callback, 10)
 
         # Initialize the ToggleServoClient to control the servo
-        self.servo_toggle = ToggleServoClient()
+        self.servo_toggle = ToggleServoClient(self)
 
         # Clients for the dance command service
-        self.dance_command_cli = self.create_client(Trigger, 'dance_command')
+       # self.dance_command_cli = self.create_client(Trigger, 'dance_command')
 
         self.active_process = None
         self.get_logger().info("Command Launcher Node started.")
@@ -167,6 +151,7 @@ class CommandLauncherNode(Node):
         except Exception as e:
             self.get_logger().error(f"Failed to launch {launch_file_name}: {e}")
 
+    
     def stop_current_launch(self):
         """
         Stops the currently active launch file process.
