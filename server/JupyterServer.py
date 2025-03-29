@@ -25,8 +25,8 @@ import os
 HOST = '0.0.0.0'
 PORT = 8001
 cwd = os.getcwd()
-#list_path = cwd + '/src/createDanceActionListSample.py'
-#run_path =  cwd + '/run_danceActionList.py'
+list_path = cwd + '/src/createDanceActionListSample.py'
+run_path =  cwd + '/run_danceActionList.py'
 
 class HandleCommand():
 
