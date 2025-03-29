@@ -14,7 +14,9 @@ python JupyterServer.py
 cd ~/stanford_ws
 colcon build
 source ./install/setup.bash
+
 ros2 launch mini_pupper_bringup bringup.launch.py
+
 ```
 
 ## terminal 3
@@ -29,7 +31,7 @@ you can send a pub message for different action, which the camera message needs 
 the message
 ```
 cd ~/stanford_ws
-source ./install/setup.bash 
+source ./install/setup.bash
 ros2 topic pub --once /command_topic std_msgs/msg/String data:\ \'dance1\'\ 
 ```
 
@@ -42,10 +44,17 @@ ros2 topic pub --once /command_topic std_msgs/msg/String data:\ \'dance2\'\
 ```
 
 
+
 Other way to test the code if you do not use command_launcher, we can disable champ servo
 
 ```
-source ./install/setup.bash 
+source ./install/setup.bash
+#deactiactive champ servo
 ros2 service call /toggle_servo std_srvs/srv/SetBool "{data: true}"
+
 ros2 launch  mini_pupper_dance_js  dance1.launch.py
+
+#actiactive champ servo
+ros2 service call /toggle_servo std_srvs/srv/SetBool "{data: false}"
+
 ```
