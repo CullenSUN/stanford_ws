@@ -108,7 +108,8 @@ class CommandLauncherNode(Node):
             if self.current_servo == "champ":
                 # Deactivate champ servo before switching to the next one
                 
-                success = self.servo_toggle.send_request(True, 30)
+                success = self.servo_toggle.send_request(True, 10)
+                success = True
                 
     
             if success:
@@ -116,11 +117,12 @@ class CommandLauncherNode(Node):
                 self.current_servo = "stanford"
                 
                 # Now that we are sure the service call succeeded, launch the dance1.launch.py file
-                self.launch_file("mini_pupper_dance_js", "dance1.launch.py")
-    
+                #self.launch_file("mini_pupper_dance_js", "dance1.launch.py")
+                succ, msg, rc = self.launch_file("mini_pupper_dance_js", "dance1.launch.py", timeout_sec=15, check_completion=True)
                 # Reactivate champ servo after launching the dance
-                self.servo_toggle.send_request(False)  # Turn champ controller back on
-                self.current_servo == "champ"
+                if (succ):
+                    self.servo_toggle.send_request(False)  # Turn champ controller back on
+                    self.current_servo == "champ"
             else:
                 self.get_logger().error("Failed to deactivate champ servo. Dance1 launch aborted.")
     
@@ -149,21 +151,62 @@ class CommandLauncherNode(Node):
         else:
             self.get_logger().warning(f"Unknown command: {command}")
 
-    
-    def launch_file(self, package_name, launch_file_name):
+    def launch_file(self, package_name, launch_file_name, timeout_sec=15.0, check_completion=False):
         """
-        Launches a specified ROS 2 launch file.
+        Launches a ROS 2 launch file with comprehensive status monitoring.
+        
+        Args:
+            package_name: Name of the ROS package
+            launch_file_name: Name of the launch file
+            timeout_sec: Timeout for process startup verification
+            check_completion: If True, waits for process completion
+        
+        Returns:
+            tuple: (success: bool, message: str, return_code: Optional[int])
+                   return_code is None if process is still running
         """
         try:
-            self.get_logger().info(f"Launching {launch_file_name}")
+            self.get_logger().info(f"Launching {package_name}/{launch_file_name}")
             self.active_process = subprocess.Popen(
                 ["ros2", "launch", package_name, launch_file_name],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                preexec_fn=os.setsid  # This allows us to kill the process group later
+                preexec_fn=os.setsid,
+                text=True
             )
+            
+            # Immediate status check
+            if self.active_process.poll() is not None:
+                error = self.active_process.stderr.read().strip()
+                return (False, f"Process terminated immediately: {error}", self.active_process.returncode)
+            
+            # Verify process stays running
+            start_time = time.time()
+            while time.time() - start_time < timeout_sec:
+                if self.active_process.poll() is not None:
+                    error = self.active_process.stderr.read().strip()
+                    return (False, f"Process crashed during startup: {error}", self.active_process.returncode)
+                time.sleep(0.1)
+            
+            # Option 1: Return immediately after successful launch
+            if not check_completion:
+                return (True, "Process launched successfully", None)
+            
+            # Option 2: Wait for completion
+            try:
+                stdout, stderr = self.active_process.communicate(timeout=timeout_sec)
+                if self.active_process.returncode == 0:
+                    return (True, "Process completed successfully", 0)
+                else:
+                    return (False, f"Process failed: {stderr.strip()}", self.active_process.returncode)
+            except subprocess.TimeoutExpired:
+                return (True, "Process still running after timeout", None)
+                
         except Exception as e:
-            self.get_logger().error(f"Failed to launch {launch_file_name}: {e}")
+            error_msg = f"Launch failed: {str(e)}"
+            if hasattr(self, 'active_process') and self.active_process:
+                self.active_process.terminate()
+            return (False, error_msg, None)    
 
     
     def stop_current_launch(self):
