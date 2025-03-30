@@ -65,6 +65,6 @@ ros2 service call /toggle_servo std_srvs/srv/SetBool "{data: false}"
 ```
 cd ~/stanford_ws
 source ./install/setup.bash 
-ros2 launch servo_toggle_client deactivate.launch.py
+ros2 launch servo_toggle_client deactivate_servo.launch.py
 
 ```
