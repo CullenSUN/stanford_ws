@@ -5,82 +5,94 @@ from rclpy.node import Node
 from std_msgs.msg import String
 import sys
 import os
-from playsound import playsound
-from mini_pupper_dance_js.Command_Sender import SocketSender  # Assuming Command_Sender is in your Python path
 import threading
-
-
+from playsound import playsound
+from mini_pupper_dance_js.Command_Sender import SocketSender
+from rclpy.executors import MultiThreadedExecutor
 
 class MiniPupperDanceJS(Node):
     def __init__(self):
         super().__init__('mini_pupper_dance_js')
-
-        # Declare a parameter for the dance file name
-        self.declare_parameter('dance_file', 'dance_file')
-        self.declare_parameter('music_folder', 'music_folder')
+        
+        # Declare parameters
+        self.declare_parameter('dance_file', '')
+        self.declare_parameter('music_folder', '')
+        
+        # Retrieve parameters
         self.dance_file_name = os.getenv('DANCE_FILE') or self.get_parameter('dance_file').get_parameter_value().string_value
         self.music_folder = self.get_parameter('music_folder').get_parameter_value().string_value
 
-        dance_file_name = ""
-        if self.dance_file_name :
-            dance_file_name = os.path.basename(self.dance_file_name).replace('.py', '') 
-            # Add the parent folder of DANCE_CONF to sys.path
-            parent_folder = os.path.dirname(self.dance_file_name)
-            if parent_folder not in sys.path:
-                sys.path.append(parent_folder)
-        else:
-            raise EnvironmentError("Environment variable DANCE_CONF is not set. Please define it with the path to dance modules.")
+        if not self.dance_file_name:
+            self.get_logger().error("DANCE_FILE is not set. Please define it as an environment variable or parameter.")
+            raise RuntimeError("DANCE_FILE not set")  # This will trigger shutdown in main()
 
-        # Immediately process the dance file
-        self.process_dance_file(dance_file_name)
+    def run_dance(self):
+        """Main dance execution logic"""
+        module_name = os.path.basename(self.dance_file_name).replace('.py', '')
+        parent_folder = os.path.dirname(self.dance_file_name)
+        
+        if parent_folder and parent_folder not in sys.path:
+            sys.path.append(parent_folder)
 
-    def process_dance_file(self, module_name):
         self.get_logger().info(f"Processing dance module: {module_name}")
 
         try:
-            # Import the Python module dynamically
             dance_module = __import__(module_name)
-
-            # Ensure 'level1' is defined in the module
+            
             if not hasattr(dance_module, 'level1'):
-                self.get_logger().error(f"'level1' is not defined in the module {module_name}.")
-                return
+                self.get_logger().error(f"'level1' is not defined in {module_name}.")
+                return False
 
-            # Get the dance moves and send commands
             HOST = '127.0.0.1'
             level1 = dance_module.level1
-            music_file = os.path.join(self.music_folder, dance_module.music_file)
+            music_file = os.path.join(self.music_folder, getattr(dance_module, 'music_file', ''))
 
-            thread2 = threading.Thread(target=self.playmusic, args=(music_file, ))
-            thread2.start()
+            if not os.path.exists(music_file):
+                self.get_logger().error(f"Music file {music_file} not found.")
+                return False
 
+            # Start music thread
+            music_thread = threading.Thread(target=self.play_music, args=(music_file,))
+            music_thread.start()
+
+            # Execute dance
             sender = SocketSender(HOST, level1)
             sender.command_dance()
-        except ModuleNotFoundError:
-            self.get_logger().error(f"Module {module_name} not found in path {DANCE_CONF}.")
+
+            # Wait for completion
+            music_thread.join()
+            self.get_logger().info("Dance completed successfully")
+            return True
+
         except Exception as e:
-            self.get_logger().error(f"Error processing dance module {module_name}: {e}")
+            self.get_logger().error(f"Error in dance execution: {e}")
+            return False
 
-
-    def playmusic(self, file):
-        # Define the command you want to run as a list of strings
-        os.system("amixer -c 0 sset 'Headphone' 100%")
-    
-        if (len(file) >1):
-            playsound(file)
-
+    def play_music(self, file_path):
+        """Play music using system sound settings"""
+        os.system("amixer -c 0 sset 'Headphone' 70%")
+        if os.path.exists(file_path):
+            playsound(file_path)
 
 def main(args=None):
     rclpy.init(args=args)
     node = MiniPupperDanceJS()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+
     try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+        # Run the dance routine
+        success = node.run_dance()
+        
+        # Shutdown regardless of success/failure
+        node.get_logger().info("Shutting down node...")
+        executor.shutdown()
+        
+    except Exception as e:
+        node.get_logger().error(f"Fatal error: {e}")
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
