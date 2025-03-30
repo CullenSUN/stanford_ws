@@ -29,36 +29,38 @@ class ToggleServoClient:
                 node.get_logger().error(f'Service still not available after {timeout_sec} seconds!')
                 return
 
-    def send_request(self, deactivate, timeout_sec=10.0):
+    def send_request(self, deactivate, callback=None):
         """
-        Sends a request to the toggle servo service and waits for a successful response.
+        Sends a request to the toggle servo service and attaches a done callback for the response.
         """
         req = SetBool.Request()
         req.data = deactivate
         self.node.get_logger().info(f'Sending request to deactivate: {deactivate}')
 
+        # Call the service asynchronously
         future = self.client.call_async(req)
-        start_time = self.node.get_clock().now().seconds_nanoseconds()[0]
 
-        while not future.done():
-            if self.node.get_clock().now().seconds_nanoseconds()[0] - start_time > timeout_sec:
-                self.node.get_logger().error("Service call timed out!")
-                return False  # Timeout occurred
-            rclpy.spin_once(self.node, timeout_sec=0.1)  # Process callbacks while waiting
+        # Attach a done callback to handle the response
+        future.add_done_callback(lambda f: self.handle_service_response(req, f, callback))
 
+    def handle_service_response(self, request, future, callback):
+        """
+        Callback function to handle the service response and pass the result to the provided callback.
+        """
         try:
             response = future.result()
             if response.success:
                 self.node.get_logger().info(f'Success: {response.message}')
-                return True
+                if callback is not None:
+                    callback(request.data, True, response.message)  # Pass success and message to the callback
             else:
                 self.node.get_logger().warn(f'Failed: {response.message}')
-                return False
+                if callback is not None:
+                    callback(request.data, False, response.message)  # Pass failure and message to the callback
         except Exception as e:
             self.node.get_logger().error(f'Service call failed: {str(e)}')
-            return False
-
-
+            if callback is not None:
+                callback(request.data, False, str(e))  # Pass failure and error message to the callback
 
 
 class CommandLauncherNode(Node):
@@ -103,43 +105,45 @@ class CommandLauncherNode(Node):
             self.stop_current_launch()
     
         # Execute the appropriate command based on the input
-        if command == "dance1":
-            success = False
+        if command == "reset":
+            self.servo_toggle.send_request(False)
+
+        elif command == "dance1":
             if self.current_servo == "champ":
                 # Deactivate champ servo before switching to the next one
                 
-                success = self.servo_toggle.send_request(True, 30)
+               self.servo_toggle.send_request(True, self.handle_servo_response)
                 
     
-            if success:
-                # Change the current servo to stanford
-                self.current_servo = "stanford"
+            # if success:
+            #     # Change the current servo to stanford
+            #     self.current_servo = "stanford"
                 
-                # Now that we are sure the service call succeeded, launch the dance1.launch.py file
-                self.launch_file("mini_pupper_dance_js", "dance1.launch.py")
+            #     # Now that we are sure the service call succeeded, launch the dance1.launch.py file
+            #     self.launch_file("mini_pupper_dance_js", "dance1.launch.py")
     
-                # Reactivate champ servo after launching the dance
-                self.servo_toggle.send_request(False)  # Turn champ controller back on
-                self.current_servo == "champ"
-            else:
-                self.get_logger().error("Failed to deactivate champ servo. Dance1 launch aborted.")
+            #     # Reactivate champ servo after launching the dance
+            #     self.servo_toggle.send_request(False)  # Turn champ controller back on
+            #     self.current_servo == "champ"
+            # else:
+            #     self.get_logger().error("Failed to deactivate champ servo. Dance1 launch aborted.")
     
         elif command == "dance2":
             success = False
             if self.current_servo == "champ":
-                success = self.servo_toggle.send_request(True)
+                success = self.servo_toggle.send_request(True, self.handle_servo_response)
     
             if success:
                 self.current_servo = "stanford"
                 self.launch_file("mini_pupper_dance_js", "dance2.launch.py")
-                self.servo_toggle.send_request(False)  # Turn champ controller back on
+                self.servo_toggle.send_request(False, self.handle_servo_response)  # Turn champ controller back on
                 self.current_servo == "champ"
             else:
                 self.get_logger().error("Failed to deactivate champ servo. Dance2 launch aborted.")
     
         elif command == "stop":
             if self.current_servo == "champ":
-                success = self.servo_toggle.send_request(True)
+                success = self.servo_toggle.send_request(True, self.handle_servo_response)
     
             self.launch_file("stop.launch.py")
         elif command == "line_follow":
@@ -149,7 +153,19 @@ class CommandLauncherNode(Node):
         else:
             self.get_logger().warning(f"Unknown command: {command}")
 
-    
+    def handle_servo_response(self, requested_deactivate, success, message):
+        """
+        Callback function to handle the result of the service response.
+        """
+        if success:
+            self.get_logger().info(f"Servo toggled successfully: {message}")
+            if requested_deactivate:
+                self.current_servo = "stanford"
+            else: 
+                self.current_servo = "champ"
+        else:
+            self.get_logger().error(f"Failed to toggle servo: {message}")
+
     def launch_file(self, package_name, launch_file_name):
         """
         Launches a specified ROS 2 launch file.
