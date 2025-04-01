@@ -109,7 +109,7 @@ class CommandLauncherNode(Node):
                 # Deactivate champ servo before switching to the next one
                 
                 success = self.servo_toggle.send_request(True, 10)
-                success = True
+                #success = True
                 
     
             if success:
