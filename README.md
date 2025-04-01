@@ -19,6 +19,7 @@ ros2 launch mini_pupper_bringup bringup.launch.py
 
 ```
 
+
 ## terminal 3
 ```
 cd ~/stanford_ws
@@ -56,5 +57,14 @@ ros2 launch  mini_pupper_dance_js  dance1.launch.py
 
 #actiactive champ servo
 ros2 service call /toggle_servo std_srvs/srv/SetBool "{data: false}"
+
+```
+
+## terminal to deactivate servo using direct service call
+
+```
+cd ~/stanford_ws
+source ./install/setup.bash 
+ros2 launch servo_toggle_client deactivate_servo.launch.py
 
 ```

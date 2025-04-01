@@ -34,46 +34,58 @@ class ServoInterface(Node):
         
         self.srv = self.create_service(SetBool, 'toggle_servo', self.deactivate_callback)
         
-        self.active = True  # Control flag
+        self.active = False  # Control flag
         self.hardware_interface = HardwareInterface()
 
     def cmd_callback(self, msg):
-        if not self.active:
+        if self.active:
             return  # Ignore messages when disabled
-        joint_positions = msg.points[0].positions
-        lf1_position = joint_positions[0]
-        lf2_position = joint_positions[1]
-        lf3_position = joint_positions[2]
-        rf1_position = joint_positions[3]
-        rf2_position = joint_positions[4]
-        rf3_position = joint_positions[5]
-        lb1_position = joint_positions[6]
-        lb2_position = joint_positions[7]
-        lb3_position = joint_positions[8]
-        rb1_position = joint_positions[9]
-        rb2_position = joint_positions[10]
-        rb3_position = joint_positions[11]
-
-        joint_angles = np.array([
-            [rf1_position, lf1_position, rb1_position, lb1_position],
-            [rf2_position, lf2_position, rb2_position, lb2_position],
-            [rf2_position + rf3_position, lf2_position + lf3_position,
-             rb2_position + rb3_position, lb2_position + lb3_position]
-        ])
-        self.hardware_interface.set_actuator_postions(joint_angles)
-
-    def deactivate_callback(self, request, response):
-        """Handles service requests to activate or deactivate servos."""
-        self.active = not request.data  # If True, deactivate; if False, activate
-        if not self.active:
-            self.get_logger().info("🔴 Servos Deactivated!")
- #           self.hardware_interface.disable_servos()
         else:
-            self.get_logger().info("🟢 Servos Activated!")
-        response.success = True
-        response.message = "Servos toggled successfully."
-        return response
+            joint_positions = msg.points[0].positions
+            lf1_position = joint_positions[0]
+            lf2_position = joint_positions[1]
+            lf3_position = joint_positions[2]
+            rf1_position = joint_positions[3]
+            rf2_position = joint_positions[4]
+            rf3_position = joint_positions[5]
+            lb1_position = joint_positions[6]
+            lb2_position = joint_positions[7]
+            lb3_position = joint_positions[8]
+            rb1_position = joint_positions[9]
+            rb2_position = joint_positions[10]
+            rb3_position = joint_positions[11]
     
+            joint_angles = np.array([
+                [rf1_position, lf1_position, rb1_position, lb1_position],
+                [rf2_position, lf2_position, rb2_position, lb2_position],
+                [rf2_position + rf3_position, lf2_position + lf3_position,
+                 rb2_position + rb3_position, lb2_position + lb3_position]
+            ])
+            self.hardware_interface.set_actuator_postions(joint_angles)
+    
+    
+    def deactivate_callback(self, request, response):
+        """Handle servo toggling when hardware control is unavailable."""
+        try:
+            self.active = request.data  # True=activate, False=deactivate
+            
+            if self.active:
+                #neutral_angles = np.zeros((3, 4))  # 3 joints x 4 legs
+                #self.hardware_interface.set_actuator_postions(neutral_angles)
+                self.get_logger().info("🟢 Servo commands ENABLED (hardware may still be active)")
+                response.success = True
+            else:
+                self.get_logger().warn("🔴 Servo commands DISABLED (hardware NOT physically disabled)")
+                response.success = True
+            
+            #response.success = True
+            response.message = "Software toggle only. Hardware unchanged."
+        except Exception as e:
+            response.success = False
+            response.message = str(e)
+        
+        return response
+
 
 def main(args=None):
     rclpy.init(args=args)
