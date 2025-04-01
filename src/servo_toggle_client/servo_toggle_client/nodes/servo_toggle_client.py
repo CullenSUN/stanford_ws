@@ -2,67 +2,66 @@
 import rclpy
 from rclpy.node import Node
 from std_srvs.srv import SetBool
-import time
 
 class ServoToggleClient(Node):
     def __init__(self):
         super().__init__('servo_toggle_client')
+        
+        # Declare parameters
+        self.declare_parameter('deactivate', True)
+        
+        # Create service client
         self.client = self.create_client(SetBool, 'toggle_servo')
         
-        # Quality control parameters
-        self.timeout_sec = 5.0
-        self.max_retries = 3
-        self.retry_delay = 1.0
-        
-        # Block until service is available
-        if not self.client.wait_for_service(timeout_sec=self.timeout_sec):
-            self.get_logger().error("Service not available, shutting down")
-            self.destroy_node()
-            rclpy.shutdown()
-            return
-        
-        # Execute and self-terminate
-        self.execute_and_terminate(deactivate=True)
+        # Wait for service
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting...')
 
-    def execute_and_terminate(self, deactivate=True):
-        """Blocking execution with automatic termination"""
-        result = False
+    def toggle_servos(self, deactivate=None):
+        """Toggle servos using parameter if None, otherwise use provided value"""
+        if deactivate is None:
+            deactivate = self.get_parameter('deactivate').value
         
-        for attempt in range(self.max_retries):
-            try:
-                req = SetBool.Request()
-                req.data = deactivate
-                
-                future = self.client.call_async(req)
-                rclpy.spin_until_future_complete(self, future, timeout_sec=self.timeout_sec)
-                
-                if future.done():
-                    response = future.result()
-                    if response.success:
-                        self.get_logger().info(f"Servo {'deactivated' if deactivate else 'activated'} successfully")
-                        result = True
-                        break
-                    else:
-                        self.get_logger().warning(f"Service reported failure: {response.message}")
-                else:
-                    self.get_logger().warning(f"Timeout on attempt {attempt + 1}")
-                
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
-                    
-            except Exception as e:
-                self.get_logger().error(f"Attempt {attempt + 1} failed: {str(e)}")
+        req = SetBool.Request()
+        req.data = deactivate
         
-        # Self-terminate
-        self.destroy_node()
-        rclpy.shutdown()
+        self.get_logger().info(f'{"Deactivating" if deactivate else "Activating"} servos...')
         
-        # Exit code for process control
-        exit(0 if result else 1)
+        future = self.client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        
+        try:
+            response = future.result()
+            if response.success:
+                self.get_logger().info(f'Success: {response.message}')
+            else:
+                self.get_logger().warn(f'Failed: {response.message}')
+            return response.success
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {str(e)}')
+            return False
 
 def main(args=None):
     rclpy.init(args=args)
-    ServoToggleClient()  # Will self-terminate after execution
+    
+    try:
+        node = ServoToggleClient()
+        
+        # Get parameter value
+        deactivate = node.get_parameter('deactivate').value
+        
+        # Execute toggle
+        success = node.toggle_servos(deactivate)
+        
+        # Shutdown
+        node.destroy_node()
+        rclpy.shutdown()
+        
+        return 0 if success else 1
+        
+    except Exception as e:
+        print(f"Error in servo toggle client: {str(e)}")
+        return 1
 
 if __name__ == '__main__':
     main()
